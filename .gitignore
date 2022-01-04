@@ -1,2 +1,2 @@
-/parser/target
-/luau-rs/target
+./parser/target
+./luau-rs/target
