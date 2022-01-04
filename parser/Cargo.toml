@@ -14,3 +14,4 @@ syn = { version = "1.0.84", features = [
     "visit",
 ] }
 quote = "1.0.14"
+full_moon = { version = "0.11.0", features = ["roblox"]}

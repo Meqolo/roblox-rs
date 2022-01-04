@@ -1,26 +1,37 @@
+extern crate full_moon;
 extern crate quote;
 extern crate syn;
 
 mod parser;
 
+use full_moon::ast::{Ast, Block};
 use parser::parse::{self, Functions};
 
 fn main() {
-    let mut parser = parse::Parser {
-        input_string: r#"
-            println!("Hello, world!");
+    let mut parser = parse::Parser::new();
 
-            fn main(string: &str, string2: &str) {
-                println!("Test");
-                println!("Test2");
-            }
-        "#
-        .to_string(),
-        output_string: "".to_string(),
-    };
+    parser.parse_string(
+        r#"
+        println!("Hello, world!");
+        println!("Hello, world!");
 
-    parser.parse_string();
+        fn main(string: &str, string2: &str) {
+            println!("Test");
+            println!("Test2");
+        }
+    "#,
+    );
     println!("{}", parser.output_string);
 
-    // println!("{}", quote!(#syntax));
+    println!(
+        "RAW DESIRED LUA: {:#?}",
+        full_moon::parse(
+            r#"
+        function main(string: string, string2: string)
+        end
+    "#
+        )
+        .unwrap()
+        .nodes()
+    );
 }
