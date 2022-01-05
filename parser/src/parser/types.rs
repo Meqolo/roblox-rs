@@ -1,16 +1,16 @@
 use crate::parser::parse::Parser;
-use syn::{FnArg, ItemFn, Pat, Type};
 
-pub trait Types {
-    fn transform_type(&mut self, type_string: String) -> ();
+pub trait Types<'a> {
+    fn transform_type(&mut self, type_string: String) -> &'a str;
 }
 
-impl Types for Parser {
-    fn transform_type(&mut self, type_string: String) -> &str {
+impl<'a> Types<'a> for Parser<'a> {
+    fn transform_type(&mut self, type_string: String) -> &'a str {
         match type_string.as_str() {
-            "str" => {
+            "str" | "String" => {
                 return "string";
             }
+            _ => return "",
         }
     }
 }

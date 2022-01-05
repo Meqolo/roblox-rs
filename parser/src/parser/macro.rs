@@ -1,45 +1,33 @@
-use crate::parser::{function::Function, parse::Parser};
+use crate::parser::parse::Parser;
 use full_moon::{
     ast::{
         punctuated::{Pair, Punctuated},
         span::ContainedSpan,
         Call, Expression, FunctionArgs, FunctionCall, Prefix, Stmt, Suffix, Value,
     },
-    tokenizer::{StringLiteralQuoteType, Symbol, Token, TokenReference, TokenType},
+    tokenizer::{StringLiteralQuoteType, Token, TokenReference, TokenType},
 };
 use std::borrow::Cow;
-use syn::ItemMacro;
+use syn::Macro;
 
-fn left_paren<'a>() -> TokenReference<'a> {
-    TokenReference::new(
-        vec![],
-        Token::new(TokenType::Symbol {
-            symbol: Symbol::LeftParen,
-        }),
-        vec![],
-    )
+pub trait Macros<'a> {
+    fn transform_item_macro(
+        &mut self,
+        item_macro: Macro,
+        last_item: bool,
+        depth: usize,
+    ) -> Option<Stmt<'a>>;
 }
 
-fn right_paren<'a>() -> TokenReference<'a> {
-    TokenReference::new(
-        vec![],
-        Token::new(TokenType::Symbol {
-            symbol: Symbol::RightParen,
-        }),
-        vec![Token::new(TokenType::Whitespace {
-            characters: Cow::from("\n"),
-        })],
-    )
-}
-
-pub trait Macros {
-    fn transform_item_macro(&mut self, item_macro: ItemMacro) -> ();
-}
-
-impl<'a> Macros for Parser<'a> {
-    fn transform_item_macro(&mut self, item_macro: ItemMacro) -> () {
-        let content = item_macro.mac.tokens.to_string();
-        match item_macro.mac.path.segments[0].ident.to_string().as_str() {
+impl<'a> Macros<'a> for Parser<'a> {
+    fn transform_item_macro(
+        &mut self,
+        item_macro: Macro,
+        last_item: bool,
+        depth: usize,
+    ) -> Option<Stmt<'a>> {
+        let content = item_macro.tokens.to_string();
+        match item_macro.path.segments[0].ident.to_string().as_str() {
             "println" => {
                 let mut punctuation = Punctuated::new();
                 punctuation.push(Pair::new(
@@ -59,7 +47,7 @@ impl<'a> Macros for Parser<'a> {
                 ));
 
                 let function_call_node = FunctionCall::new(Prefix::Name(TokenReference::new(
-                    vec![],
+                    vec![Token::new(TokenType::tabs(depth))],
                     Token::new(TokenType::Identifier {
                         identifier: Cow::from("print"),
                     }),
@@ -67,19 +55,26 @@ impl<'a> Macros for Parser<'a> {
                 )))
                 .with_suffixes(vec![Suffix::Call(Call::AnonymousCall(
                     FunctionArgs::Parentheses {
-                        parentheses: ContainedSpan::new(left_paren(), right_paren()),
+                        parentheses: ContainedSpan::new(
+                            TokenReference::symbol("(").unwrap(),
+                            if last_item == true {
+                                TokenReference::symbol(")").unwrap()
+                            } else {
+                                TokenReference::symbol(")\n").unwrap()
+                            },
+                        ),
                         arguments: punctuation,
                     },
                 ))]);
 
-                self.lua_ast
-                    .push((Stmt::FunctionCall(function_call_node), None));
+                Some(Stmt::FunctionCall(function_call_node))
             }
             _ => {
                 println!(
                     "Unhandled string in macros: {}",
-                    item_macro.mac.path.segments[0].ident.to_string().as_str()
-                )
+                    item_macro.path.segments[0].ident.to_string().as_str()
+                );
+                None
             }
         }
     }

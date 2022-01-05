@@ -4,7 +4,6 @@ extern crate syn;
 
 mod parser;
 
-use full_moon::ast::{Ast, Block};
 use parser::parse::{self, Functions};
 
 fn main() {
@@ -18,20 +17,19 @@ fn main() {
         fn main(string: &str, string2: &str) {
             println!("Test");
             println!("Test2");
+
+            fn main2(string: &str) {
+                println!("Test3");
+            }
         }
     "#,
     );
     println!("{}", parser.output_string);
 
-    println!(
-        "RAW DESIRED LUA: {:#?}",
-        full_moon::parse(
-            r#"
-        function main(string: string, string2: string)
-        end
-    "#
-        )
-        .unwrap()
-        .nodes()
-    );
+    // println!(
+    //     "RAW DESIRED LUA: {:#?}",
+    //     full_moon::parse(r#"        print("Test")"#)
+    //         .unwrap()
+    //         .nodes()
+    // );
 }

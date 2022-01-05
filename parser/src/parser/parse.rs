@@ -1,4 +1,4 @@
-use syn::Item;
+use syn::{Block as SynBlock, Expr, Item, Stmt as SynStmt};
 
 use super::function::Function;
 use super::r#macro::Macros;
@@ -12,17 +12,20 @@ pub struct Parser<'a> {
     pub lua_ast: Vec<(Stmt<'a>, Option<TokenReference<'a>>)>,
 }
 
-pub trait Functions {
+pub trait Functions<'a> {
     fn new() -> Self;
 
     fn parse_string(&mut self, input: &str) -> ();
     fn get_items(&mut self, items: Vec<Item>) -> ();
-    fn get_item_type(&mut self, item: Item) -> ();
-
-    // fn append_to_lua_ast(&mut self, new_node: Stmt) -> ();
+    fn parse_item(&mut self, item: Item, last_item: bool, depth: usize) -> Option<Stmt<'a>>;
+    fn parse_block(
+        &mut self,
+        block: SynBlock,
+        depth: usize,
+    ) -> Vec<(Stmt<'a>, Option<TokenReference<'a>>)>;
 }
 
-impl<'a> Functions for Parser<'a> {
+impl<'a> Functions<'a> for Parser<'a> {
     fn new() -> Self {
         Self {
             output_string: String::new(),
@@ -44,18 +47,75 @@ impl<'a> Functions for Parser<'a> {
     }
 
     fn get_items(&mut self, items: Vec<Item>) {
-        for item in items {
-            self.get_item_type(item)
+        let new_items = items.to_vec();
+        let items_iter = items.into_iter();
+
+        for (index, item) in items_iter.enumerate() {
+            let node_returned = self.parse_item(item, index + 1 == new_items.len(), 0);
+
+            if let Some(node) = node_returned {
+                self.lua_ast.push((node, None))
+            }
         }
     }
 
-    fn get_item_type(&mut self, item: Item) {
+    fn parse_item(&mut self, item: Item, last_item: bool, depth: usize) -> Option<Stmt<'a>> {
         match item {
-            Item::Macro(item_macro) => self.transform_item_macro(item_macro),
-            Item::Fn(item_function) => self.transform_item_fn(item_function),
+            Item::Macro(item_macro) => self.transform_item_macro(item_macro.mac, last_item, depth),
+            Item::Fn(item_function) => self.transform_item_fn(item_function, depth),
             _ => {
                 println!("UNHANDLED ITEM: {:#?}", item);
+                None
             }
         }
+    }
+
+    fn parse_block(
+        &mut self,
+        block: SynBlock,
+        depth: usize,
+    ) -> Vec<(Stmt<'a>, Option<TokenReference<'a>>)> {
+        let mut block_vec: Vec<(Stmt<'a>, Option<TokenReference<'a>>)> = Vec::new();
+        let new_stmts = block.stmts.to_vec();
+        let stmts_iter = block.stmts.into_iter();
+
+        for (index, statement_enum) in stmts_iter.enumerate() {
+            let mut expr_option = None;
+            let mut item_option = None;
+            let mut node = None;
+            match statement_enum {
+                SynStmt::Semi(expr, _) => expr_option = Some(expr),
+                SynStmt::Item(item) => item_option = Some(item),
+                _ => println!("Unprocessed statement enum {:#?}", statement_enum),
+            }
+
+            if let Some(expr) = expr_option {
+                match expr {
+                    Expr::Macro(macro_expr) => {
+                        node = self.transform_item_macro(
+                            macro_expr.mac,
+                            index + 1 == new_stmts.len(),
+                            depth,
+                        )
+                    }
+                    _ => {
+                        println!("Unhandled expression in block. Node: {:#?}", expr);
+                    }
+                };
+            } else if let Some(item) = item_option {
+                match item {
+                    Item::Fn(fn_item) => node = self.transform_item_fn(fn_item, depth),
+                    _ => {
+                        println!("Unhandled item in block. Node: {:#?}", item);
+                    }
+                }
+            }
+
+            if let Some(statement) = node {
+                block_vec.push((statement, None))
+            }
+        }
+
+        block_vec
     }
 }
