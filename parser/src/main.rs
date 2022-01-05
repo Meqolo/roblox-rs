@@ -14,7 +14,7 @@ fn main() {
         println!("Hello, world!");
         println!("Hello, world!");
 
-        fn main(string: &str, string2: &str) {
+        fn main(string: &str, string2: &str) -> (u32, f32) {
             println!("Test");
             println!("Test2");
 
@@ -28,8 +28,13 @@ fn main() {
 
     // println!(
     //     "RAW DESIRED LUA: {:#?}",
-    //     full_moon::parse(r#"        print("Test")"#)
-    //         .unwrap()
-    //         .nodes()
+    //     full_moon::parse(
+    //         r#"
+    //     function main(): (string, number)
+    //         print("Yes")
+    //     end"#
+    //     )
+    //     .unwrap()
+    //     .nodes()
     // );
 }

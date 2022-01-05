@@ -8,8 +8,9 @@ use full_moon::{
     },
     tokenizer::{Symbol, Token, TokenReference, TokenType},
 };
-use std::{borrow::Cow, vec};
-use syn::{FnArg, ItemFn, Pat, Type};
+use quote::__private::Punct;
+use std::{borrow::Cow, process::Output, vec};
+use syn::{FnArg, ItemFn, Pat, Path, ReturnType, Type};
 
 use super::parse::Functions;
 
@@ -19,6 +20,7 @@ pub trait Function<'a> {
         func_name: String,
         params: Vec<(String, String)>,
         child_stmts: Vec<(Stmt<'a>, Option<TokenReference<'a>>)>,
+        return_type: Option<TypeSpecifier<'a>>,
         depth: usize,
     ) -> Stmt<'a>;
 
@@ -31,6 +33,7 @@ impl<'a> Function<'a> for Parser<'a> {
         func_name: String,
         params: Vec<(String, String)>,
         child_stmts: Vec<(Stmt<'a>, Option<TokenReference<'a>>)>,
+        return_type: Option<TypeSpecifier<'a>>,
         depth: usize,
     ) -> Stmt<'a> {
         let mut punctuation = Punctuated::new();
@@ -82,7 +85,8 @@ impl<'a> Function<'a> for Parser<'a> {
                     .with_type_specifiers(type_specifiers)
                     .with_parameters_parentheses(ContainedSpan::new(
                         TokenReference::symbol("(").unwrap(),
-                        TokenReference::symbol(")\n").unwrap(),
+                        TokenReference::symbol(if return_type.is_none() { ")\n" } else { ")" })
+                            .unwrap(),
                     ))
                     .with_block(block)
                     .with_end_token(TokenReference::new(
@@ -96,7 +100,8 @@ impl<'a> Function<'a> for Parser<'a> {
                             symbol: Symbol::End,
                         }),
                         vec![],
-                    )),
+                    ))
+                    .with_return_type(return_type),
             )
             .with_function_token(TokenReference::new(
                 vec![
@@ -135,7 +140,93 @@ impl<'a> Function<'a> for Parser<'a> {
             }
         }
 
+        let mut output_types = None;
+        let output_return_type = item_function.sig.output;
+        if let ReturnType::Type(_, output_type_box) = output_return_type {
+            match *output_type_box {
+                Type::Path(output_type_path) => {
+                    output_types = Some(TypeSpecifier::new(TypeInfo::Basic(TokenReference::new(
+                        vec![],
+                        Token::new(TokenType::Identifier {
+                            identifier: Cow::from(
+                                self.transform_type(
+                                    output_type_path
+                                        .path
+                                        .segments
+                                        .first()
+                                        .unwrap()
+                                        .ident
+                                        .to_string(),
+                                ),
+                            ),
+                        }),
+                        vec![Token::new(TokenType::Whitespace {
+                            characters: Cow::from("\n"),
+                        })],
+                    ))))
+                }
+                Type::Tuple(output_type_tuple) => {
+                    let mut tuple_types = Punctuated::new();
+                    let new_output = output_type_tuple.elems.clone();
+                    for (index, output_type_path) in output_type_tuple.elems.into_iter().enumerate()
+                    {
+                        if let Type::Path(output_path) = output_type_path {
+                            println!("{:#?}", output_path.path.segments);
+                            tuple_types.push(Pair::Punctuated(
+                                TypeInfo::Basic(TokenReference::new(
+                                    vec![],
+                                    Token::new(TokenType::Identifier {
+                                        identifier: Cow::from(
+                                            self.transform_type(
+                                                output_path
+                                                    .path
+                                                    .segments
+                                                    .first()
+                                                    .unwrap()
+                                                    .ident
+                                                    .to_string(),
+                                            ),
+                                        ),
+                                    }),
+                                    vec![],
+                                )),
+                                if index + 1 != new_output.len() {
+                                    TokenReference::new(
+                                        vec![],
+                                        Token::new(TokenType::Whitespace {
+                                            characters: Cow::from(", "),
+                                        }),
+                                        vec![],
+                                    )
+                                } else {
+                                    TokenReference::new(
+                                        vec![],
+                                        Token::new(TokenType::Whitespace {
+                                            characters: Cow::from(""),
+                                        }),
+                                        vec![],
+                                    )
+                                },
+                            ));
+                        }
+                    }
+
+                    output_types = Some(TypeSpecifier::new(TypeInfo::Tuple {
+                        parentheses: ContainedSpan::new(
+                            TokenReference::symbol("(").unwrap(),
+                            TokenReference::symbol(")\n").unwrap(),
+                        ),
+                        types: tuple_types,
+                    }))
+                }
+                _ => println!(
+                    "Unhandled type of output in function. {:#?}",
+                    output_type_box
+                ),
+            }
+        }
+
         let block_vec = self.parse_block(*item_function.block, depth + 1);
-        Some(self.form_lua_fn(name, params.clone(), block_vec, depth))
+        Some(self.form_lua_fn(name, params.clone(), block_vec, output_types, depth))
     }
 }
